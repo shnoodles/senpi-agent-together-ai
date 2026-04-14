@@ -301,7 +301,13 @@ function patchOpenClawJson() {
   }
 
   // AI_MODEL env var overrides the provider default (used by fleet deployments)
-  const modelOverride = process.env.AI_MODEL?.trim();
+  // Remap legacy ignas_efa0/ prefix → together/ so the dedicated endpoint model
+  // is resolved under the "together" provider (where the full model ID is sent to the API).
+  let modelOverride = process.env.AI_MODEL?.trim();
+  if (modelOverride && modelOverride.startsWith("ignas_efa0/")) {
+    modelOverride = "together/" + modelOverride;
+    console.log(`[bootstrap] Remapped AI_MODEL: ignas_efa0/... → ${modelOverride}`);
+  }
 
   if (modelOverride) {
     merged.agents.defaults.model = {
@@ -354,6 +360,12 @@ function patchOpenClawJson() {
         apiKey: togetherKey,
         api: "openai-completions",
         models: [
+          { id: "google/gemma-4-31b-it", name: "Gemma 4 31B", reasoning: false, contextWindow: 128000, maxTokens: 8192 },
+          { id: "google/gemma-4-26b-a4b-it", name: "Gemma 4 26B MoE", reasoning: false, contextWindow: 128000, maxTokens: 8192 },
+          // Dedicated endpoint — Together AI expects the full account-scoped model ID
+          // (ignas_efa0/google/gemma-4-31B-it-5c2fa90b) in the API request, so it must
+          // live under the "together" provider, not a separate "ignas_efa0" provider.
+          { id: "ignas_efa0/google/gemma-4-31B-it-5c2fa90b", name: "Gemma 4 31B IT (Dedicated)", reasoning: false, contextWindow: 128000, maxTokens: 8192 },
           { id: "Qwen/Qwen3.5-9B", name: "Qwen3.5 9B", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
           { id: "Qwen/Qwen3.5-27B", name: "Qwen3.5 27B", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
           { id: "Qwen/Qwen3.5-35B-A3B", name: "Qwen3.5 35B A3B", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
@@ -364,18 +376,13 @@ function patchOpenClawJson() {
           { id: "deepseek/deepseek-r1", name: "DeepSeek R1", reasoning: true, contextWindow: 131072, maxTokens: 32768 },
         ],
       };
-      console.log("[bootstrap] Together AI provider configured");
+      console.log("[bootstrap] Together AI provider configured (including dedicated Gemma 4 31B IT endpoint)");
 
-      // Dedicated endpoint for Gemma 4 31B IT (account-scoped model ID on Together AI)
-      merged.models.providers.ignas_efa0 = {
-        baseUrl: "https://api.together.xyz/v1",
-        apiKey: togetherKey,
-        api: "openai-completions",
-        models: [
-          { id: "google/gemma-4-31B-it-5c2fa90b", name: "Gemma 4 31B IT (Dedicated)", reasoning: false, contextWindow: 128000, maxTokens: 8192 },
-        ],
-      };
-      console.log("[bootstrap] Together AI dedicated endpoint configured for Gemma 4 31B IT");
+      // Clean up stale ignas_efa0 provider from previous boots — dedicated model now lives under "together"
+      if (merged.models.providers.ignas_efa0) {
+        delete merged.models.providers.ignas_efa0;
+        console.log("[bootstrap] Removed stale ignas_efa0 provider (dedicated model moved to together provider)");
+      }
     }
   }
 

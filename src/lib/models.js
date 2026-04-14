@@ -77,7 +77,7 @@ export const DESIRED_MODELS = {
   "together/Qwen/Qwen3.5-9B": { alias: "Qwen3.5 9B (Together)" },
   "together/Qwen/Qwen3.5-27B": { alias: "Qwen3.5 27B (Together)" },
   "together/Qwen/Qwen3.5-35B-A3B": { alias: "Qwen3.5 35B A3B (Together)" },
-  "ignas_efa0/google/gemma-4-31B-it-5c2fa90b": { alias: "Gemma 4 31B IT (Dedicated)" },
+  "together/ignas_efa0/google/gemma-4-31B-it-5c2fa90b": { alias: "Gemma 4 31B IT (Dedicated)" },
   "together/Qwen/Qwen3.5-397B-A17B": { alias: "Qwen3.5 397B (Together)" },
   "together/Qwen/Qwen3-235B-A22B-FP8": { alias: "Qwen3 235B (Together)" },
   "together/moonshotai/Kimi-K2.5": { alias: "Kimi K2.5 (Together)" },
