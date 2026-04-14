@@ -349,8 +349,16 @@ function patchOpenClawJson() {
     };
     console.log("[bootstrap] Together AI provider configured with Qwen3.5 models");
 
-    // Note: dedicated Together AI endpoints (account-scoped model IDs) can be added here
-    // by uncommenting and updating the provider block below with your endpoint details.
+    // Dedicated endpoint for Gemma 4 31B IT (account-scoped model ID on Together AI)
+    merged.models.providers.ignas_efa0 = merged.models.providers.ignas_efa0 || {
+      baseUrl: "https://api.together.xyz/v1",
+      apiKey: "${TOGETHER_API_KEY}",
+      api: "openai-completions",
+      models: [
+        { id: "google/gemma-4-31B-it-5c2fa90b", name: "Gemma 4 31B IT (Dedicated)", reasoning: false, contextWindow: 128000, maxTokens: 8192 },
+      ],
+    };
+    console.log("[bootstrap] Together AI dedicated endpoint configured for Gemma 4 31B IT");
   }
 
   // Always rewrite agents.list so profile/alsoAllow fixes take effect on every redeploy.
