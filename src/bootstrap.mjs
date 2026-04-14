@@ -7,7 +7,7 @@ import {
   AI_PROVIDER_MODEL_MAP,
 } from "./lib/models.js";
 import { readCachedTelegramId, writeCachedTelegramId, readChatIdFromUserMd } from "./lib/telegramId.js";
-import { TELEGRAM_USERNAME } from "./lib/config.js";
+import { TELEGRAM_USERNAME, resolveEffectiveApiKey } from "./lib/config.js";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const WORKSPACE_DIR = process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
@@ -127,6 +127,17 @@ function patchOpenClawJson() {
 
   // Remove any invalid keys that would cause gateway startup to fail.
   delete cfg.mcpServers;
+
+  // Clean up any providers that still have unresolved ${...} env var placeholders
+  // from previous boots. These cause "Missing env var" crashes at gateway startup.
+  if (cfg.models?.providers) {
+    for (const [name, provider] of Object.entries(cfg.models.providers)) {
+      if (typeof provider?.apiKey === "string" && provider.apiKey.startsWith("${")) {
+        console.log(`[bootstrap] Removing stale provider "${name}" with unresolved apiKey placeholder`);
+        delete cfg.models.providers[name];
+      }
+    }
+  }
 
   // Union with existing allow so user-installed plugins stay permitted (deepMerge replaces arrays).
   const existingPluginAllow = Array.isArray(cfg.plugins?.allow)
@@ -327,39 +338,45 @@ function patchOpenClawJson() {
     console.log("[bootstrap] DeepSeek provider configured with V3 and R1 models");
   }
 
-  // Register Qwen3.5 models with Together provider so OpenClaw can resolve them
+  // Register Together AI models — resolve the API key at bootstrap time (not as a
+  // ${TOGETHER_API_KEY} placeholder) to avoid "Missing env var" errors when the gateway
+  // reads the persisted config and the env var name doesn't match what the user set.
   if (process.env.AI_PROVIDER?.trim()?.toLowerCase() === "together") {
-    merged.models = merged.models || {};
-    merged.models.mode = "merge";
-    merged.models.providers = merged.models.providers || {};
-    merged.models.providers.together = merged.models.providers.together || {
-      baseUrl: "https://api.together.xyz/v1",
-      apiKey: "${TOGETHER_API_KEY}",
-      api: "openai-completions",
-      models: [
-        { id: "Qwen/Qwen3.5-9B", name: "Qwen3.5 9B", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
-        { id: "Qwen/Qwen3.5-27B", name: "Qwen3.5 27B", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
-        { id: "Qwen/Qwen3.5-35B-A3B", name: "Qwen3.5 35B A3B", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
-        { id: "Qwen/Qwen3.5-397B-A17B", name: "Qwen3.5 397B", reasoning: false, contextWindow: 256000, maxTokens: 32768 },
-        { id: "Qwen/Qwen3-235B-A22B-FP8", name: "Qwen3 235B", reasoning: false, contextWindow: 40000, maxTokens: 32768 },
-        { id: "moonshotai/Kimi-K2.5", name: "Kimi K2.5", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
-        { id: "meta-llama/llama-3.3-70b-instruct-turbo", name: "Llama 3.3 70B", reasoning: false, contextWindow: 131072, maxTokens: 32768 },
-        { id: "deepseek/deepseek-r1", name: "DeepSeek R1", reasoning: true, contextWindow: 131072, maxTokens: 32768 },
-      ],
-    };
-    console.log("[bootstrap] Together AI provider configured with Qwen3.5 models");
+    const togetherKey = process.env.TOGETHER_API_KEY?.trim() || resolveEffectiveApiKey();
+    if (!togetherKey) {
+      console.error("[bootstrap] Together AI: no API key found (set TOGETHER_API_KEY or AI_API_KEY)");
+    } else {
+      merged.models = merged.models || {};
+      merged.models.mode = "merge";
+      merged.models.providers = merged.models.providers || {};
+      merged.models.providers.together = {
+        baseUrl: "https://api.together.xyz/v1",
+        apiKey: togetherKey,
+        api: "openai-completions",
+        models: [
+          { id: "Qwen/Qwen3.5-9B", name: "Qwen3.5 9B", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
+          { id: "Qwen/Qwen3.5-27B", name: "Qwen3.5 27B", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
+          { id: "Qwen/Qwen3.5-35B-A3B", name: "Qwen3.5 35B A3B", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
+          { id: "Qwen/Qwen3.5-397B-A17B", name: "Qwen3.5 397B", reasoning: false, contextWindow: 256000, maxTokens: 32768 },
+          { id: "Qwen/Qwen3-235B-A22B-FP8", name: "Qwen3 235B", reasoning: false, contextWindow: 40000, maxTokens: 32768 },
+          { id: "moonshotai/Kimi-K2.5", name: "Kimi K2.5", reasoning: false, contextWindow: 262144, maxTokens: 32768 },
+          { id: "meta-llama/llama-3.3-70b-instruct-turbo", name: "Llama 3.3 70B", reasoning: false, contextWindow: 131072, maxTokens: 32768 },
+          { id: "deepseek/deepseek-r1", name: "DeepSeek R1", reasoning: true, contextWindow: 131072, maxTokens: 32768 },
+        ],
+      };
+      console.log("[bootstrap] Together AI provider configured");
 
-    // Dedicated endpoint for Gemma 4 31B IT (account-scoped model ID on Together AI)
-    // Always overwrite (not ||) so persistent volume gets updated if model changes.
-    merged.models.providers.ignas_efa0 = {
-      baseUrl: "https://api.together.xyz/v1",
-      apiKey: "${TOGETHER_API_KEY}",
-      api: "openai-completions",
-      models: [
-        { id: "google/gemma-4-31B-it-5c2fa90b", name: "Gemma 4 31B IT (Dedicated)", reasoning: false, contextWindow: 128000, maxTokens: 8192 },
-      ],
-    };
-    console.log("[bootstrap] Together AI dedicated endpoint configured for Gemma 4 31B IT");
+      // Dedicated endpoint for Gemma 4 31B IT (account-scoped model ID on Together AI)
+      merged.models.providers.ignas_efa0 = {
+        baseUrl: "https://api.together.xyz/v1",
+        apiKey: togetherKey,
+        api: "openai-completions",
+        models: [
+          { id: "google/gemma-4-31B-it-5c2fa90b", name: "Gemma 4 31B IT (Dedicated)", reasoning: false, contextWindow: 128000, maxTokens: 8192 },
+        ],
+      };
+      console.log("[bootstrap] Together AI dedicated endpoint configured for Gemma 4 31B IT");
+    }
   }
 
   // Always rewrite agents.list so profile/alsoAllow fixes take effect on every redeploy.
