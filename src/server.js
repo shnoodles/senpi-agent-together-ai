@@ -49,6 +49,28 @@ if (!SETUP_PASSWORD) {
 const OPENCLAW_GATEWAY_TOKEN = resolveGatewayToken();
 process.env.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_TOKEN;
 
+// Propagate AI_API_KEY to provider-specific env var so ${TOGETHER_API_KEY} etc. resolve
+// in openclaw.json config. Without this, users who set AI_API_KEY but not the provider-
+// specific key get "Missing env var" errors at gateway startup.
+{
+  const PROVIDER_ENV_MAP = {
+    together: "TOGETHER_API_KEY",
+    deepseek: "DEEPSEEK_API_KEY",
+    moonshot: "MOONSHOT_API_KEY",
+    gemini: "GEMINI_API_KEY",
+    venice: "VENICE_API_KEY",
+    zai: "ZAI_API_KEY",
+  };
+  const envVar = PROVIDER_ENV_MAP[AI_PROVIDER];
+  if (envVar && !process.env[envVar]) {
+    const effectiveKey = resolveEffectiveApiKey();
+    if (effectiveKey) {
+      process.env[envVar] = effectiveKey;
+      console.log(`[wrapper] Propagated effective key to ${envVar}`);
+    }
+  }
+}
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));

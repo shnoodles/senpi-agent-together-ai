@@ -350,7 +350,8 @@ function patchOpenClawJson() {
     console.log("[bootstrap] Together AI provider configured with Qwen3.5 models");
 
     // Dedicated endpoint for Gemma 4 31B IT (account-scoped model ID on Together AI)
-    merged.models.providers.ignas_efa0 = merged.models.providers.ignas_efa0 || {
+    // Always overwrite (not ||) so persistent volume gets updated if model changes.
+    merged.models.providers.ignas_efa0 = {
       baseUrl: "https://api.together.xyz/v1",
       apiKey: "${TOGETHER_API_KEY}",
       api: "openai-completions",
